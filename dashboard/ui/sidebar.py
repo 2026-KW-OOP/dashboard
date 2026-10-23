@@ -1,4 +1,4 @@
-"""좌측 사이드바: 파일 업로드·필터·설정."""
+"""좌측 사이드바: 파일 업로드·시트 선택·테마 설정. (필터는 ui/filter_bar.py의 FilterBar가 화면 오른쪽 위에 그린다.)"""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -20,26 +20,25 @@ class SidebarComponent:
     def render(self, dataset: Optional[Dataset], sheets: Optional[List[str]] = None) -> SidebarState:
         """사이드바 위젯을 그리고 사용자 입력을 반환한다.
 
-        입력: dataset — 현재 로드된 데이터(아직 없으면 None, 이 경우 필터
-              위젯은 그리지 않음). sheets — 방금 업로드된 파일의 시트 목록
-              (아직 없으면 None, 이 경우 시트 선택 위젯은 그리지 않음).
-        동작: 파일 업로더 → (sheets가 있으면) 시트 선택 → (dataset이 있으면)
-              컬럼별 필터 위젯 → 테마 토글 순서로 그리고, 각 위젯의 반환값을 모은다.
+        입력: dataset — 현재 로드된 데이터(아직 없으면 None). 사이드바는 필터를
+              그리지 않으므로 지금은 참조하지 않는다(시그니처는 설계서 유지).
+              sheets — 방금 업로드된 파일의 시트 목록(없거나 1개면 시트 선택 위젯은 안 그림).
+        동작: 파일 업로더 → (시트가 2개 이상이면) 시트 선택 → 테마 토글 순서로 그리고,
+              각 위젯의 반환값을 모은다.
         반환: 이번 렌더링 시점에 사용자가 고른 값들을 담은 SidebarState
-              (업로드 파일, 선택 시트, 필터 목록, 테마 모드).
+              (업로드 파일, 선택 시트, 테마 모드). filters는 FilterBar가 채우므로 빈 리스트.
         """
         import streamlit as st
 
         st.sidebar.title("⚙️ 설정")
         uploaded_file = self._render_file_uploader()
-        selected_sheet = self._render_sheet_selector(sheets) if sheets else None
-        filters = self._render_filters(dataset) if dataset is not None else []
+        selected_sheet = self._render_sheet_selector(sheets) if sheets and len(sheets) > 1 else None
         theme_mode = self._render_theme_toggle()
 
         return SidebarState(
             uploaded_file=uploaded_file,
             selected_sheet=selected_sheet,
-            filters=filters,
+            filters=[],
             theme_mode=theme_mode,
         )
 
@@ -65,20 +64,6 @@ class SidebarComponent:
         import streamlit as st
 
         return st.sidebar.selectbox("시트 선택", sheets)
-
-    def _render_filters(self, dataset: Dataset) -> list[FilterCondition]:
-        """컬럼별 필터 위젯을 동적으로 생성한다 (미구현, 아직 필터 없음).
-
-        입력: dataset — dataset.df.select_dtypes(...)로 "이 컬럼에 어떤
-              위젯을 그릴지" 직접 판단할 대상 (숫자/범주/날짜 dtype 확인).
-        동작(완성판 기준): 숫자 컬럼 → st.slider(범위), 범주 컬럼 →
-              st.multiselect(dataset.get_unique_values(col)로 얻은 값 목록),
-              날짜 컬럼 → date range picker를 그리고, 사용자가 실제로 값을
-              바꾼 컬럼만 FilterCondition으로 변환한다.
-        반환: FilterCondition 리스트 (사용자가 아무 필터도 안 건드리면 빈 리스트).
-              이 값이 DataFilter.apply()의 filters 인자로 그대로 들어간다.
-        """
-        return []
 
     def _render_theme_toggle(self) -> str:
         """라이트/다크 모드 전환.
