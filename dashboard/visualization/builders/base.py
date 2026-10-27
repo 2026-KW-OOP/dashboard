@@ -1,4 +1,4 @@
-"""모든 차트 빌더의 공통 인터페이스."""
+"""모든 차트 빌더가 공유하는 ChartSpec, 인터페이스, 유효성 검사 및 테마."""
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -9,10 +9,13 @@ import pandas as pd
 from plotly.graph_objects import Figure
 
 from dashboard.config.theme import ThemeConfig
+from dashboard.utils.exceptions import ChartRenderError
 
 
 @dataclass
 class ChartSpec:
+    """차트 생성에 필요한 설정. 팀 저장소의 기존 필드/순서를 유지한다."""
+
     chart_type: str
     x: Optional[str] = None
     y: Union[str, List[str], None] = None
@@ -24,38 +27,64 @@ class ChartSpec:
 
 
 class ChartBuilder(ABC):
+    """Plotly 차트 빌더의 공통 추상 부모 클래스."""
+
     def __init__(self, theme: ThemeConfig) -> None:
         self.theme = theme
 
     @abstractmethod
     def build(self, df: pd.DataFrame, spec: ChartSpec) -> Figure:
-        """Plotly Figure를 생성한다 (하위 클래스 구현 몫).
-
-        입력: df — 이미 필터·집계를 마친, 차트에 바로 그릴 데이터.
-              spec — 어떤 컬럼을 x/y/color/size로 쓸지, 제목·orientation 등
-              차트 구성을 담은 ChartSpec.
-        동작: spec을 해석해 plotly.express 또는 graph_objects로 trace를
-              만들고, 보통 마지막에 self._apply_theme(fig)로 스타일을 입힌다.
-        반환: 완성된 plotly.graph_objects.Figure.
-        """
-
-    def _apply_theme(self, fig: Figure) -> Figure:
-        """공통 스타일(색상·폰트·여백)을 적용한다 (미구현, 원본 반환).
-
-        입력: fig — build()가 만든, 아직 테마가 안 입혀진 Figure.
-        동작: self.theme(ThemeConfig)의 palette/font_family/chart_template을
-              fig.update_layout(...)에 반영한다.
-        반환: 스타일이 적용된 동일한 Figure 객체.
-        """
-        return fig
+        """DataFrame과 설정을 받아 Plotly Figure를 반환한다."""
 
     def _validate_spec(self, spec: ChartSpec) -> None:
-        """스펙 유효성 검사 (미구현).
+        """차트 종류별로 공통 설정을 검증하고 잘못된 설정은 예외로 알린다.
 
-        입력: spec — build()에 전달될 ChartSpec.
-        동작: 이 빌더가 그림을 그리는 데 필수인 필드(예: BarChartBuilder는
-              x, y가 필수)가 채워져 있는지 확인한다.
-        반환: 없음. 필수 필드가 비어 있으면 utils/exceptions.py의
-              ChartRenderError를 발생시켜야 한다.
+        데이터 컬럼 유무, 값의 자료형 등 데이터 의존 검증은 구체적인 빌더가 담당한다.
         """
-        pass
+        if not isinstance(spec, ChartSpec):
+            raise ChartRenderError("차트 설정은 ChartSpec이어야 합니다.")
+        if spec.chart_type not in ("bar", "pie", "table"):
+            raise ChartRenderError(f"지원하지 않는 차트 종류입니다: {spec.chart_type!r}")
+        if spec.chart_type == "bar":
+            if not isinstance(spec.x, str) or not spec.x:
+                raise ChartRenderError("막대 차트에는 x 범주 컬럼명이 필요합니다.")
+            if spec.orientation not in ("v", "h"):
+                raise ChartRenderError("orientation은 'v' 또는 'h'여야 합니다.")
+            if spec.agg_func not in (None, "sum", "mean", "count", "min", "max"):
+                raise ChartRenderError("지원하지 않는 agg_func입니다.")
+        elif spec.chart_type == "pie":
+            if not (isinstance(spec.x, str) and spec.x) and not (
+                isinstance(spec.color, str) and spec.color
+            ):
+                raise ChartRenderError("도넛 차트에는 x 또는 color 범주 컬럼명이 필요합니다.")
+            if spec.y is not None and not isinstance(spec.y, str):
+                raise ChartRenderError("도넛 차트의 y는 숫자 컬럼명 하나여야 합니다.")
+        # 표는 x/y 없는 ChartSpec(chart_type='table')도 허용한다.
+
+    def _apply_theme(self, fig: Figure) -> Figure:
+        """ThemeConfig를 Plotly Figure에 적용한 뒤 같은 Figure를 돌려준다.
+
+        가변 설정을 쓰지 않으며, TableBuilder가 정한 표 여백·셀 색상은 보존한다.
+        """
+        if not isinstance(fig, Figure):
+            raise ChartRenderError("테마를 적용할 대상은 Plotly Figure여야 합니다.")
+
+        mode = getattr(self.theme, "mode", "light")
+        template = getattr(self.theme, "chart_template", "plotly_white") or "plotly_white"
+        # ThemeConfig.for_mode('dark')가 아직 mode 필드만 바꾸므로 보완한다.
+        if mode == "dark" and template == "plotly_white":
+            template = "plotly_dark"
+
+        font_family = getattr(self.theme, "font_family", "sans-serif") or "sans-serif"
+        palette = getattr(self.theme, "palette", None)
+        primary_color = getattr(self.theme, "primary_color", "#1f77b4")
+        settings = {
+            "template": template,
+            "font_family": font_family,
+        }
+        if palette:
+            settings["colorway"] = list(palette)
+        if primary_color:
+            settings["title_font_color"] = primary_color
+        fig.update_layout(**settings)
+        return fig
