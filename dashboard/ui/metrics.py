@@ -9,8 +9,8 @@ import pandas as pd
 
 @dataclass(frozen=True)
 class ColumnMap:
-    district: str = "자치구"
-    category: str = "업종"
+    district: str = "자치구명"
+    category: str = "서울페이업종명"
 
 
 @dataclass(frozen=True)
