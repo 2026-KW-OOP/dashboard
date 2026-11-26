@@ -29,7 +29,7 @@ class SummaryMetrics:
 
 class MetricsCalculator:
     COUNT_COLUMN = "가맹점 수"
-    OTHER_LABEL = "기타"
+    OTHER_LABEL = "그 외"
 
     def __init__(self, columns: Optional[ColumnMap] = None) -> None:
         self.columns = columns or ColumnMap()
@@ -75,7 +75,7 @@ class MetricsCalculator:
         table = self.count_by(df, column)
         if table.empty:
             return None
-        total = int(table[self.COUNT_COLUMN].sum())
+        total = len(df)
         first = table.iloc[0]
         count = int(first[self.COUNT_COLUMN])
         return TopItem(name=str(first[column]), count=count, ratio=count / total if total else 0.0)
