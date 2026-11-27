@@ -5,8 +5,17 @@
 """
 from __future__ import annotations
 
+import sys
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Optional
+
+# `streamlit run dashboard/app.py`는 sys.path에 스크립트 폴더(dashboard/)만 넣고
+# 저장소 루트는 넣지 않는다. 배포 환경(Streamlit Cloud)에서도 `dashboard.*` 패키지를
+# import할 수 있도록 저장소 루트를 직접 추가한다.
+_REPO_ROOT = str(Path(__file__).resolve().parent.parent)
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
 
 import pandas as pd
 
